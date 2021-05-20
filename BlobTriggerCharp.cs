@@ -10,6 +10,7 @@ using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Company.Function
 {
@@ -18,7 +19,6 @@ namespace Company.Function
         [FunctionName("BlobTriggerCharp")]
         public static async Task Run(
             [BlobTrigger("csv/{id}-{name}.csv", Connection = "challenge06_STORAGE")] Stream myBlob,
-            // [OrchestrationTrigger] IDurableOrchestrationContext context,
             [DurableClient] IDurableClient entityClient,
             string name,
             string id,
@@ -42,17 +42,19 @@ namespace Company.Function
         [FunctionName("Counter")]
         public static async Task Counter(
             [EntityTrigger] IDurableEntityContext ctx,
-            // IDurableOrchestrationContext durableOrchestrationContext,
+            [CosmosDB(
+                databaseName: "Ratings",
+                collectionName: "Rating",
+                ConnectionStringSetting = "connectionStringSetting")]
+                IAsyncCollector<dynamic> ratingsCollection,
             ILogger log)
         {
             int cpt;
             log.LogWarning("Start");
-            // using (await durableOrchestrationContext.LockAsync(ctx.EntityId))
-            // {
-            // durableOrchestrationContext.
+
             cpt = ctx.GetState<int>() + 1;
             ctx.SetState(cpt);
-            // }
+
             log.LogInformation(cpt.ToString());
             log.LogWarning($"WIP {cpt} !");
 
@@ -77,12 +79,25 @@ namespace Company.Function
 
                     if (res.IsSuccessStatusCode)
                     {
+                        
+                        var tmp = await res.Content.ReadAsStringAsync();
+                        log.LogWarning(tmp);
+                        
+                        // dynamic data = JsonSerializer.DeserializeObject<dynamic>(tmp);
+                        List<dynamic> data = JsonConvert.DeserializeObject<List<dynamic>>(tmp);
+                        // dynamic data = JsonConvert.DeserializeObject<List<dynamic>>(tmp);
+                        // dynamic data = JObject.Parse(tmp);
+                        data.ForEach(async d => await ratingsCollection.AddAsync(d));
+                         
+                        //  await ratingsCollection.AddAsync(data);// .Result;
                         log.LogError("youpi youpi !");
+                        // log.LogError($"{res.StatusCode}\n\t" + res.Content.ReadAsStringAsync().Result);
                     }
                     else
                     {
                         log.LogError($"nop :( {res.StatusCode}\n\t" + res.Content.ReadAsStringAsync().Result);
                     }
+
                     log.LogError(res.IsSuccessStatusCode.ToString());
                 }
             }
